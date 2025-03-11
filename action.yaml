@@ -1,0 +1,61 @@
+name: Helm Update Chart
+
+description: Updates the application version in Chart.yaml and pushes the change to the repository.
+
+inputs:
+  env:
+    description: "Deployment environment"
+    required: true
+  app:
+    description: "Application name"
+    required: true
+  app_version:
+    description: "Application version"
+    required: true
+  short_sha:
+    description: "Short commit SHA"
+    required: true
+  gh_pat:
+    description: "GitHub Personal Access Token"
+    required: true
+  gitops_repos:
+    description: "Gihub repo for chart.yml"
+    required: true
+  organisation_repos:
+    description: "Github Organization"
+    required: true
+  
+  
+
+runs:
+  using: "composite"
+  steps:
+    - name: Download chart
+      uses: actions/checkout@v4
+      with:
+        repository: "${{ inputs.organisation_repos }}/${{ inputs.gitops_repos }}"
+        path: "${{ inputs.gitops_repos }}"
+        token: "${{ inputs.gh_pat }}"
+
+    - name: Update App's version in Chart.yaml
+      shell: bash
+      working-directory: ${{ inputs.gitops_repos }}/edge-${{ inputs.env }}/${{ inputs.app }}
+      env:
+        VERSION: "${{ inputs.app_version }}-${{ inputs.short_sha }}"
+      run: |
+        sed -i "s/^appVersion: .*/appVersion: \"${VERSION}\"/" Chart.yaml
+
+    - name: Push Commit for CD on Rancher
+      shell: bash
+      working-directory: ${{ inputs.gitops_repos }}/edge-${{ inputs.env }}/${{ inputs.app }}
+      env:
+        CI_COMMIT_MESSAGE: "Update App Version to"
+        CI_COMMIT_AUTHOR: "Continuous Deployment"
+        VERSION: "${{ inputs.app_version }}-${{ inputs.short_sha }}"
+        APP: "${{ inputs.app }}"
+      run: |
+        git config --global user.name "${CI_COMMIT_AUTHOR}"
+        git config --global user.email "hub-devops@myriadgroup.com"
+        git add Chart.yaml
+        git commit -m "${CI_COMMIT_MESSAGE} ${VERSION} in Chart.yaml for ${APP}"
+        git push origin HEAD
